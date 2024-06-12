@@ -3,45 +3,47 @@ package com.example.todolistapp
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import androidx.activity.viewModels
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import com.example.todolistapp.ui.theme.TodoListAppTheme
+import com.example.todolistapp.viewmodel.TaskViewModel
 
 class MainActivity : ComponentActivity() {
+    // Uzyskanie referencji do ViewModel
+    private val taskViewModel: TaskViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             TodoListAppTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
+                // Scaffold definiuje podstawową strukturę ekranu
+                Scaffold(
+                    // Przycisk dodawania nowego zadania
+                    floatingActionButton = {
+                        FloatingActionButton(onClick = {
+                            val newTask = Task(
+                                id = UUID.randomUUID().hashCode(),
+                                title = "Nowe Zadanie",
+                                description = "Opis nowego zadania",
+                                dueDate = Date(),
+                                isCompleted = false
+                            )
+                            taskViewModel.addTask(newTask)
+                        }) {
+                            Text("+")
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                ) { innerPadding ->
+                    // Wyświetlenie listy zadań
+                    TaskList(
+                        taskViewModel = taskViewModel,
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    TodoListAppTheme {
-        Greeting("Android")
     }
 }
