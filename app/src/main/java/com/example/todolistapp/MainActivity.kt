@@ -125,3 +125,11 @@ fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
     )
 }
 
+@Preview(showBackground = true)
+@Composable
+fun DefaultPreview() {
+    TodoListAppTheme {
+        TaskList(taskViewModel = TaskViewModel())
+    }
+}
+
