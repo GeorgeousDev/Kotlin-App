@@ -84,3 +84,44 @@ fun TaskItem(task: Task, onEdit: (Task) -> Unit, onDelete: (Task) -> Unit) {
         Divider()
     }
 }
+
+@Composable
+fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
+    var title by remember { mutableStateOf(task.title) }
+    var description by remember { mutableStateOf(task.description) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Edit Task") },
+        text = {
+            Column {
+                // Pole tekstowe do edycji tytułu zadania
+                TextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Title") }
+                )
+                // Pole tekstowe do edycji opisu zadania
+                TextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description") }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                // Zapisanie zmian w zadaniu
+                onSave(task.copy(title = title, description = description))
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
