@@ -4,44 +4,28 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import com.example.todolistapp.model.Task
-import java.util.*
 
 class TaskViewModel : ViewModel() {
-    private val _tasks = MutableLiveData<List<Task>>()
+    private val _tasks = MutableLiveData<List<Task>>(emptyList())
     val tasks: LiveData<List<Task>> = _tasks
 
-    init {
-        _tasks.value = listOf(
-            Task(1, "Zadanie 1", "Opis zadania 1", Date(), false),
-            Task(2, "Zadanie 2", "Opis zadania 2", Date(), false)
-        )
-    }
-
-    // Dodanie nowego zadania
     fun addTask(task: Task) {
-        val currentTasks = _tasks.value ?: listOf()
-        _tasks.value = currentTasks + task
+        _tasks.value = _tasks.value?.plus(task)
     }
 
-    // Aktualizacja istniejącego zadania
     fun updateTask(updatedTask: Task) {
-        val currentTasks = _tasks.value ?: return
-        _tasks.value = currentTasks.map { task ->
+        _tasks.value = _tasks.value?.map { task ->
             if (task.id == updatedTask.id) updatedTask else task
         }
     }
 
-    // Oznaczenie zadania jako ukończone
-    fun completeTask(taskId: Int) {
-        val currentTasks = _tasks.value ?: return
-        _tasks.value = currentTasks.map { task ->
-            if (task.id == taskId) task.copy(isCompleted = true) else task
-        }
+    fun removeTask(taskId: Int) {
+        _tasks.value = _tasks.value?.filter { it.id != taskId }
     }
 
-    // Usunięcie zadania
-    fun removeTask(taskId: Int) {
-        val currentTasks = _tasks.value ?: return
-        _tasks.value = currentTasks.filter { it.id != taskId }
+    fun updateTaskPhotoPath(taskId: Int, photoPath: String) {
+        _tasks.value = _tasks.value?.map { task ->
+            if (task.id == taskId) task.copy(photoPath = photoPath) else task
+        }
     }
 }

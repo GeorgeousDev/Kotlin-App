@@ -1,13 +1,16 @@
 package com.example.todolistapp
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.pm.PackageManager
-import android.os.Build
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,37 +18,50 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import com.example.todolistapp.model.Task
 import com.example.todolistapp.ui.theme.TodoListAppTheme
 import com.example.todolistapp.viewmodel.TaskViewModel
+import java.io.File
+import java.io.FileOutputStream
 import java.util.*
 
 class MainActivity : ComponentActivity() {
     private val taskViewModel: TaskViewModel by viewModels()
+    private lateinit var cameraLauncher: ActivityResultLauncher<Void?>
+    private var capturedImage: Bitmap? = null
+    private var currentTaskId: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Sprawdzenie i poproszenie o uprawnienie do powiadomień
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
-            }
+        // Sprawdzenie i poproszenie o uprawnienie do kamery
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.CAMERA), 2)
         }
 
-        // Tworzenie kanału powiadomień
-        createNotificationChannel()
+        // Inicjalizacja launchera kamery
+        cameraLauncher = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+            if (bitmap != null) {
+                capturedImage = bitmap
+                Log.d("MainActivity", "Zdjęcie zostało zrobione")
+                currentTaskId?.let { taskId ->
+                    saveImageAndAttachToTask(taskId, bitmap)
+                }
+            } else {
+                Log.d("MainActivity", "Nie udało się zrobić zdjęcia.")
+            }
+        }
 
         setContent {
             TodoListAppTheme {
                 Scaffold(
                     floatingActionButton = {
                         FloatingActionButton(onClick = {
+                            // Dodanie nowego zadania
                             val newTask = Task(
                                 id = UUID.randomUUID().hashCode(),
                                 title = "Nowe Zadanie",
@@ -54,9 +70,6 @@ class MainActivity : ComponentActivity() {
                                 isCompleted = false
                             )
                             taskViewModel.addTask(newTask)
-
-                            // Wyślij powiadomienie o dodaniu nowego zadania
-                            sendPushNotification("Dodano zadanie", newTask.title, newTask.id)
                         }) {
                             Text("+")
                         }
@@ -68,11 +81,13 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(innerPadding),
                         onTaskEdit = { updatedTask ->
                             taskViewModel.updateTask(updatedTask)
-                            sendPushNotification("Edytowano zadanie", updatedTask.title, updatedTask.id)
                         },
                         onTaskDelete = { task ->
                             taskViewModel.removeTask(task.id)
-                            sendPushNotification("Usunięto zadanie", task.title, task.id)
+                        },
+                        onAddPhoto = { taskId ->
+                            currentTaskId = taskId
+                            dispatchTakePictureIntent()
                         }
                     )
                 }
@@ -80,33 +95,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Task Notifications"
-            val descriptionText = "Notifications for task updates"
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
-            val channel = NotificationChannel("task_channel", name, importance).apply {
-                description = descriptionText
-            }
-
-            val notificationManager: NotificationManager =
-                getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+    private fun dispatchTakePictureIntent() {
+        Log.d("MainActivity", "Wywołanie dispatchTakePictureIntent")
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            cameraLauncher.launch(null)
+        } else {
+            ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.CAMERA), 2)
         }
     }
 
-    private fun sendPushNotification(title: String, message: String, notificationId: Int) {
-        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            val builder = NotificationCompat.Builder(this, "task_channel")
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setContentTitle(title)
-                .setContentText(message)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-
-            with(NotificationManagerCompat.from(this)) {
-                notify(notificationId, builder.build())
-            }
+    private fun saveImageAndAttachToTask(taskId: Int, bitmap: Bitmap) {
+        val file = File(filesDir, "$taskId.jpg")
+        FileOutputStream(file).use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
         }
+        taskViewModel.updateTaskPhotoPath(taskId, file.absolutePath)
     }
 }
 
@@ -115,7 +118,8 @@ fun TaskList(
     taskViewModel: TaskViewModel,
     modifier: Modifier = Modifier,
     onTaskEdit: (Task) -> Unit,
-    onTaskDelete: (Task) -> Unit
+    onTaskDelete: (Task) -> Unit,
+    onAddPhoto: (Int) -> Unit
 ) {
     val tasks by taskViewModel.tasks.observeAsState(emptyList())
     var showDialog by remember { mutableStateOf(false) }
@@ -131,7 +135,8 @@ fun TaskList(
                 },
                 onDelete = {
                     onTaskDelete(it)
-                }
+                },
+                onAddPhoto = onAddPhoto
             )
         }
     }
@@ -143,13 +148,14 @@ fun TaskList(
             onSave = { updatedTask ->
                 onTaskEdit(updatedTask)
                 showDialog = false
-            }
+            },
+            onAddPhoto = { onAddPhoto(taskToEdit!!.id) }
         )
     }
 }
 
 @Composable
-fun TaskItem(task: Task, onEdit: (Task) -> Unit, onDelete: (Task) -> Unit) {
+fun TaskItem(task: Task, onEdit: (Task) -> Unit, onDelete: (Task) -> Unit, onAddPhoto: (Int) -> Unit) {
     Column(modifier = Modifier.padding(8.dp)) {
         Text(text = task.title, style = MaterialTheme.typography.titleMedium)
         Text(text = task.description, style = MaterialTheme.typography.bodyMedium)
@@ -163,12 +169,24 @@ fun TaskItem(task: Task, onEdit: (Task) -> Unit, onDelete: (Task) -> Unit) {
                 Text("Delete")
             }
         }
+        Button(onClick = { onAddPhoto(task.id) }) {
+            Text("Dodaj zdjęcie")
+        }
+        task.photoPath?.let {
+            Spacer(modifier = Modifier.height(8.dp))
+            Image(bitmap = BitmapFactory.decodeFile(it).asImageBitmap(), contentDescription = "Zdjęcie")
+        }
         Divider()
     }
 }
 
 @Composable
-fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
+fun EditTaskDialog(
+    task: Task,
+    onDismiss: () -> Unit,
+    onSave: (Task) -> Unit,
+    onAddPhoto: () -> Unit
+) {
     var title by remember { mutableStateOf(task.title) }
     var description by remember { mutableStateOf(task.description) }
 
@@ -187,6 +205,15 @@ fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
                     onValueChange = { description = it },
                     label = { Text("Description") }
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = onAddPhoto) {
+                    Text("Dodaj zdjęcie")
+                }
+                // Wyświetlanie zdjęcia, jeśli zostało zrobione
+                task.photoPath?.let {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Image(bitmap = BitmapFactory.decodeFile(it).asImageBitmap(), contentDescription = "Zdjęcie", modifier = Modifier.size(128.dp))
+                }
             }
         },
         confirmButton = {
@@ -211,7 +238,8 @@ fun DefaultPreview() {
         TaskList(
             taskViewModel = TaskViewModel(),
             onTaskEdit = {},
-            onTaskDelete = {}
+            onTaskDelete = {},
+            onAddPhoto = {}
         )
     }
 }
