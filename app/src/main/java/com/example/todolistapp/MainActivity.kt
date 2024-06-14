@@ -1,8 +1,11 @@
 package com.example.todolistapp
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -22,6 +25,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.example.todolistapp.model.Task
 import com.example.todolistapp.ui.theme.TodoListAppTheme
 import com.example.todolistapp.viewmodel.TaskViewModel
@@ -38,10 +43,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Sprawdzenie i poproszenie o uprawnienie do kamery
+        // Sprawdzenie i poproszenie o uprawnienia
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+            }
+        }
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.CAMERA), 2)
         }
+
+        // Tworzenie kanału powiadomień
+        createNotificationChannel()
 
         // Inicjalizacja launchera kamery
         cameraLauncher = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
@@ -70,6 +83,9 @@ class MainActivity : ComponentActivity() {
                                 isCompleted = false
                             )
                             taskViewModel.addTask(newTask)
+
+                            // Wyślij powiadomienie o dodaniu nowego zadania
+                            sendPushNotification("Dodano zadanie", newTask.title, newTask.id)
                         }) {
                             Text("+")
                         }
@@ -81,9 +97,11 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(innerPadding),
                         onTaskEdit = { updatedTask ->
                             taskViewModel.updateTask(updatedTask)
+                            sendPushNotification("Edytowano zadanie", updatedTask.title, updatedTask.id)
                         },
                         onTaskDelete = { task ->
                             taskViewModel.removeTask(task.id)
+                            sendPushNotification("Usunięto zadanie", task.title, task.id)
                         },
                         onAddPhoto = { taskId ->
                             currentTaskId = taskId
@@ -91,6 +109,35 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
+            }
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Task Notifications"
+            val descriptionText = "Notifications for task updates"
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val channel = NotificationChannel("task_channel", name, importance).apply {
+                description = descriptionText
+            }
+
+            val notificationManager: NotificationManager =
+                getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun sendPushNotification(title: String, message: String, notificationId: Int) {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            val builder = NotificationCompat.Builder(this, "task_channel")
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+
+            with(NotificationManagerCompat.from(this)) {
+                notify(notificationId, builder.build())
             }
         }
     }
